@@ -1,7 +1,5 @@
-# Core dependencies
-torch==2.1.2
-torchvision==0.16.2
---index-url https://download.pytorch.org/whl/cu121
+# Core dependencies — PyTorch installed separately (see setup.sh or CI)
+# torch==2.1.2 + torchvision==0.16.2 from https://download.pytorch.org/whl/<cu121|cpu>
 
 # Model components
 timm==0.9.12
