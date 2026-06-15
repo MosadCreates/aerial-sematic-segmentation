@@ -1,0 +1,142 @@
+# =========================================================================== #
+# Custom Configuration — EfficientNet-B4 U-Net
+# =========================================================================== #
+# Full setup with EfficientNet-B4 encoder, CutMix, boundary-aware loss,
+# SCSE blocks, and deep supervision.
+# =========================================================================== #
+
+seed: 42
+data_root: ./data
+ckpt_dir: ./checkpoints
+results_dir: ./results
+log_dir: ./logs
+
+dataset:
+  name: loveda
+  repo_id: tacoperis/loveda
+  num_classes: 7
+  class_names:
+    - Background
+    - Building
+    - Road
+    - Water
+    - Barren
+    - Forest
+    - Agriculture
+  image_size: 1024
+  crop_size: 512
+  val_size: 1024
+
+augmentation:
+  train:
+    crop_size: [512, 512]
+    horizontal_flip_prob: 0.5
+    vertical_flip_prob: 0.5
+    rotate90_prob: 0.5
+    shift_scale_rotate:
+      shift_limit: 0.0625
+      scale_limit: 0.1
+      rotate_limit: 30
+      prob: 0.5
+    elastic_transform:
+      alpha: 1
+      sigma: 50
+      alpha_affine: 50
+      prob: 0.2
+    brightness_contrast:
+      brightness_limit: 0.2
+      contrast_limit: 0.2
+      prob: 0.5
+    hue_saturation_value:
+      hue_shift_limit: 10
+      sat_shift_limit: 20
+      val_shift_limit: 10
+      prob: 0.5
+    gaussian_blur:
+      blur_limit: [3, 7]
+      prob: 0.2
+    gauss_noise:
+      var_limit: [10.0, 50.0]
+      prob: 0.2
+    clahe:
+      clip_limit: 2.0
+      tile_grid_size: [8, 8]
+      prob: 0.3
+    normalize:
+      mean: [0.485, 0.456, 0.406]
+      std: [0.229, 0.224, 0.225]
+  val:
+    normalize:
+      mean: [0.485, 0.456, 0.406]
+      std: [0.229, 0.224, 0.225]
+
+cutmix:
+  enabled: true
+  prob: 0.5
+  alpha: 1.0
+
+model:
+  architecture: efficient_unet
+  encoder_name: efficientnet-b4
+  encoder_weights: imagenet
+  encoder_freeze_epochs: 5
+  encoder_lr_multiplier: 0.1
+  decoder_channels: [256, 128, 64, 32, 16]
+  use_scse: true
+  deep_supervision: true
+  deep_supervision_weights: [1.0, 0.5, 0.25]
+  aux_weight_anneal_epochs: 10
+  num_classes: 7
+
+loss:
+  alpha: 1.0
+  beta: 1.0
+  gamma: 0.5
+  label_smoothing: 0.1
+  dice_smooth: 1.0e-6
+  boundary:
+    enabled: true
+    kernel_size: 3
+    boundary_width: 3
+    boundary_weight: 2.0
+
+optimizer:
+  name: adamw
+  lr: 1.0e-3
+  encoder_lr: 1.0e-4
+  weight_decay: 1.0e-4
+  beta1: 0.9
+  beta2: 0.999
+
+scheduler:
+  name: cosine_warm_restarts
+  t_0: 10
+  t_mult: 2
+  eta_min: 1.0e-6
+  warmup_epochs: 5
+  warmup_lr: 1.0e-6
+
+training:
+  epochs: 60
+  batch_size: 8
+  num_workers: 4
+  val_frequency: 1
+  log_frequency: 50
+  visualize_frequency: 5
+  mixed_precision: true
+  gradient_clip_norm: 1.0
+  gradient_accumulation_steps: 1
+  save_top_k: 3
+  resume: null
+
+sliding_window:
+  patch_size: 512
+  stride: 256
+  gaussian_weight: true
+
+wandb:
+  project: aerial-semantic-segmentation
+  entity: null
+  run_name: efficientnet-b4-unet
+  mode: online
+  log_images: true

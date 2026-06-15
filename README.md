@@ -1,46 +1,18 @@
 # Semantic Segmentation on Aerial Imagery
 
-A production-quality semantic segmentation pipeline for aerial imagery, built on the [LoveDA](https://huggingface.co/datasets/tacoperis/loveda) dataset. Achieves **52.1 mIoU** — beating a vanilla U-Net baseline by **+6.4 points** through a custom U-Net with EfficientNet-B4 encoder, CutMix augmentation, and boundary-aware loss.
+A production-quality semantic segmentation pipeline for aerial imagery, built on [LoveDA](https://huggingface.co/datasets/tacoperis/loveda). Custom U-Net with EfficientNet-B4 encoder, CutMix augmentation, and boundary-aware loss — achieving **52.1 mIoU** (+6.4 over vanilla U-Net baseline).
 
-## Architecture
+---
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                   EfficientNet-B4 Encoder                │
-│              (pretrained on ImageNet)                    │
-│                                                          │
-│  Input (3×H×W)                                           │
-│    │                                                     │
-│  Stage 0: stride 2  →  C0 = 48                          │
-│  Stage 1: stride 4  →  C1 = 32                          │
-│  Stage 2: stride 8  →  C2 = 56                          │
-│  Stage 3: stride 16 →  C3 = 160                         │
-│  Stage 4: stride 32 →  C4 = 448                         │
-└──────────┬──────┬──────┬──────┬──────────────────────────┘
-           │      │      │      │
-           v      v      v      v
-┌──────────────────────────────────────────────────────────┐
-│              U-Net Decoder (bilinear upsample)            │
-│                                                          │
-│  DecoderBlock 0 ← skip C3  → +SCSEBlock                 │
-│       ↓                                                 │
-│  DecoderBlock 1 ← skip C2  → +SCSEBlock                 │
-│       ↓                                                 │
-│  DecoderBlock 2 ← skip C1  → +SCSEBlock                 │
-│       ↓                                                 │
-│  DecoderBlock 3 ← skip C0  → +SCSEBlock                 │
-│       ↓                                                 │
-│  SegmentationHead (1×1 conv → 7 classes)                │
-│       ↓                                                 │
-│  Prediction (7 × H × W)                                 │
-└──────────────────────────────────────────────────────────┘
-```
+## Highlights
 
-**Key components:**
-- **Encoder**: EfficientNet-B4 via `timm`, pretrained on ImageNet, 5-level feature pyramid
-- **Decoder**: Bilinear upsampling (no transposed conv) + skip connections + Conv-BN-ReLU
-- **SCSE blocks**: Spatial + Channel Squeeze-and-Excitation after each decoder block
-- **Deep supervision**: Auxiliary segmentation heads at intermediate decoder levels with annealed weights
+- **Architecture**: EfficientNet-B4 encoder (ImageNet pretrained) + U-Net decoder with SCSE attention + deep supervision
+- **Training**: Mixed-precision FP16, CutMix augmentation, boundary-aware loss (CE + Dice + morphological boundary)
+- **Inference**: ONNX export (dynamic resolution, verified pixel-wise), FastAPI server with HTML visualization
+- **Ablation**: 4-variant study isolating each contribution (+2.5 CutMix, +4.1 boundary loss)
+- **Single GPU**: Runs on A100 40GB or Colab A100 — no multi-GPU required
+
+---
 
 ## Results
 
@@ -52,191 +24,201 @@ A production-quality semantic segmentation pipeline for aerial imagery, built on
 
 ### Ablation Study
 
-| Configuration | mIoU | Gain |
+| Configuration | mIoU | vs Baseline |
 |---|---|---|
 | EfficientNet + CE only | 45.7 | — |
 | + CutMix | 48.2 | +2.5 |
 | + Boundary-aware loss | 49.8 | +4.1 |
 | **Full (CutMix + Boundary)** | **52.1** | **+6.4** |
 
-## Dataset: LoveDA
-
-[LoveDA](https://huggingface.co/datasets/tacoperis/loveda) (Land-cOver Domain Adaptive semantic segmentation):
-- **7 classes**: Background, Building, Road, Water, Barren, Forest, Agriculture
-- **~5,000 images**: 1024×1024 RGB at 0.3m GSD
-- **2 domains**: Urban and Rural (different class distributions)
-- **Severe class imbalance**: Background and Agriculture dominate (>60% combined)
-
-## Project Structure
-
-```
-├── configs/                  # YAML configuration files
-│   ├── config.yaml           # Full hyperparameter schema
-│   ├── baseline.yaml         # Vanilla U-Net config
-│   ├── custom.yaml           # EfficientNet-B4 U-Net config
-│   └── dataset_stats.yaml    # Computed dataset statistics
-├── src/
-│   ├── data/                 # Data loading & augmentation
-│   │   ├── dataset.py        # PyTorch Dataset class
-│   │   ├── augmentation.py   # Albumentations pipelines
-│   │   ├── cutmix.py         # CutMix for segmentation
-│   │   ├── class_weights.py  # Inverse-frequency weights
-│   │   └── dataset_stats.py  # Mean/std, class frequencies
-│   ├── models/               # Model architectures
-│   │   ├── blocks.py         # DecoderBlock, SCSEBlock, SegmentationHead
-│   │   ├── efficient_unet.py # EfficientNet-B4 U-Net
-│   │   ├── vanilla_unet.py   # Vanilla U-Net baseline
-│   │   └── model_summary.py  # Parameter count & shape trace
-│   ├── losses/               # Loss functions
-│   │   ├── cross_entropy.py  # Weighted CE + label smoothing
-│   │   ├── dice.py           # Multiclass Dice loss
-│   │   ├── boundary_loss.py  # Morphological boundary weighting
-│   │   └── composite_loss.py # BoundaryAwareLoss
-│   ├── training/             # Training infrastructure
-│   │   ├── train.py          # Full training loop
-│   │   └── sliding_window.py # Patch-based inference
-│   ├── evaluation/           # Evaluation harness
-│   │   ├── metrics.py        # IoU, F1, accuracy from scratch
-│   │   ├── evaluate.py       # Test set evaluation
-│   │   ├── ablation.py       # Ablation study runner
-│   │   └── comparison.py     # Baseline vs custom comparison
-│   ├── serving/              # Model serving
-│   │   ├── app.py            # FastAPI inference server
-│   │   ├── export_onnx.py    # ONNX export with verification
-│   │   └── benchmark.py      # Latency benchmark
-│   └── utils/
-│       ├── seed.py           # Reproducibility seeds
-│       ├── config.py         # YAML config loader
-│       └── visualization.py  # Plotting & wandb helpers
-├── tests/
-│   ├── test_augmentation.py  # Augmentation + CutMix tests
-│   ├── test_loss.py          # Loss function tests
-│   └── test_metrics.py       # Metrics computation tests
-├── notebooks/
-│   └── 01_dataset_exploration.ipynb
-├── scripts/
-│   ├── download_loveda.py    # HuggingFace dataset download
-│   ├── full_pipeline.sh      # End-to-end pipeline
-│   └── docker_build.sh       # Docker build helper
-├── .github/workflows/
-│   └── ci.yml                # CI pipeline (pytest + lint)
-├── requirements.txt
-├── setup.sh
-├── Dockerfile
-├── docker-compose.yml
-├── Makefile
-└── README.md
-```
+---
 
 ## Quick Start
 
-### 1. Setup
-
 ```bash
-git clone <repo-url>
-cd Semantic-Segmentation-on-Aerial-Imagery
-
-# Create environment and download dataset
+# 1. Setup environment and download LoveDA dataset
 make setup
+source .venv/bin/activate
 
-# Activate environment
-source .venv/bin/activate    # Linux/Mac
-source .venv/Scripts/activate  # Windows
-
-# Compute dataset statistics
+# 2. Compute dataset statistics (class weights, mean/std, sample grid)
 make data
-```
 
-### 2. Train Baseline
-
-```bash
+# 3. Train vanilla U-Net baseline
 make baseline
-# or: python src/training/train.py --config configs/baseline.yaml
-```
 
-### 3. Train Custom Model
-
-```bash
+# 4. Train custom EfficientNet-B4 U-Net
 make train
-# or: python src/training/train.py --config configs/custom.yaml
-```
 
-### 4. Evaluate
-
-```bash
+# 5. Evaluate on test set
 python src/evaluation/evaluate.py \
     --checkpoint checkpoints/best_model.pth \
     --config configs/custom.yaml \
     --output_dir results
-```
 
-### 5. Export to ONNX
+# 6. Run ablation study (4 variants, ~30 min each)
+make ablation
 
-```bash
+# 7. Export to ONNX
 python src/serving/export_onnx.py \
     --checkpoint checkpoints/best_model.pth \
     --config configs/custom.yaml \
     --output model.onnx
-```
 
-### 6. Serve
-
-```bash
+# 8. Start inference server
 make serve
-# or: uvicorn src.serving.app:app --host 0.0.0.0 --port 8000
-
-# Test
 curl http://localhost:8000/health
-curl -X POST -F "file=@test_image.jpg" http://localhost:8000/predict -o result.zip
-```
+curl -X POST -F "file=@test.jpg" http://localhost:8000/predict -o result.zip
 
-### 7. Run Ablation Study
-
-```bash
-make ablation
-```
-
-### 8. Run Tests
-
-```bash
+# 9. Run tests
 make test
-```
 
-### 9. Docker
-
-```bash
+# 10. Docker deployment
 docker-compose up -d
 ```
 
+---
+
+## Architecture
+
+```
+Input (3×H×W)
+    │
+    ├── EfficientNet-B4 Encoder (timm, features_only=True)
+    │   ├── Stage 0: stride 2  →  48 channels
+    │   ├── Stage 1: stride 4  →  32 channels
+    │   ├── Stage 2: stride 8  →  56 channels
+    │   ├── Stage 3: stride 16 → 160 channels
+    │   └── Stage 4: stride 32 → 448 channels
+    │
+    └── Decoder (bilinear upsample + skip connections)
+        ├── DecoderBlock 0 ← Stage 3  → +SCSEBlock → AuxHead 1
+        ├── DecoderBlock 1 ← Stage 2  → +SCSEBlock → AuxHead 2
+        ├── DecoderBlock 2 ← Stage 1  → +SCSEBlock
+        ├── DecoderBlock 3 ← Stage 0  → +SCSEBlock
+        └── SegmentationHead (1×1 conv) → Prediction (7×H×W)
+```
+
+### Key Components
+
+| Component | Details |
+|---|---|
+| **Encoder** | EfficientNet-B4 via `timm`, pretrained on ImageNet, frozen for first 5 epochs then fine-tuned at 0.1× LR |
+| **Decoder** | Bilinear upsampling (no transposed conv — avoids checkerboard artifacts, zero learned params) + skip connection + Conv-BN-ReLU |
+| **SCSEBlock** | Concurrent Spatial + Channel Squeeze-and-Excitation — recalibrates both channel-wise (global context) and spatially (local patterns) |
+| **Deep Supervision** | Auxiliary segmentation heads on intermediate decoder levels; loss weights annealed linearly to 0 over first 10 epochs; heads removed at inference |
+
+---
+
+## Dataset: LoveDA
+
+[LoveDA](https://huggingface.co/datasets/tacoperis/loveda) (Land-cOver Domain Adaptive semantic segmentation):
+
+| Property | Value |
+|---|---|
+| Classes | 7: Background, Building, Road, Water, Barren, Forest, Agriculture |
+| Images | ~5,000 (3,306 train / 764 val / 984 test) |
+| Resolution | 1024×1024 RGB at 0.3m GSD |
+| Domains | Urban (dense buildings, roads) and Rural (agriculture, forest) |
+| Challenge | Severe class imbalance — Background + Agriculture >60% of pixels |
+
+---
+
 ## Training Details
 
-- **Hardware**: Single A100 40GB (or Colab A100)
-- **Batch size**: 8 (effective: 8 with gradient accumulation)
-- **Optimizer**: AdamW with differential LRs (encoder: 1e-4, decoder: 1e-3)
-- **Scheduler**: CosineAnnealingWarmRestarts (T₀=10, T_mult=2) + 5-epoch linear warmup
-- **Mixed precision**: FP16 via `torch.cuda.amp`
-- **Encoder freeze**: First 5 epochs, then unfreeze
-- **Gradient clipping**: max_norm=1.0
-- **Validation**: Sliding window (512×512 patches, 256 stride, Gaussian blending)
-- **Loss**: `L = 1.0·CE + 1.0·Dice + 0.5·Boundary`
+| Hyperparameter | Value |
+|---|---|
+| GPU | Single A100 40GB (or Colab A100) |
+| Batch size | 8 (effective: 8 × gradient accumulation) |
+| Optimizer | AdamW (encoder: 1e-4, decoder: 1e-3) |
+| Scheduler | CosineAnnealingWarmRestarts (T₀=10, T_mult=2) + 5-epoch linear warmup |
+| Mixed precision | FP16 via `torch.cuda.amp.GradScaler` + `autocast` |
+| Encoder freeze | First 5 epochs, then unfreeze |
+| Gradient clipping | max_norm=1.0 (critical with deep supervision multi-head gradients) |
+| Validation | Sliding window: 512×512 patches, 256 stride (50% overlap), Gaussian blending |
+| Loss | L = 1.0·CE(class-weighted) + 1.0·Dice + 0.5·Boundary(morphological) |
 
-## Augmentation Pipeline
+### Augmentation Pipeline
 
-| Transform | Probability | Applied to |
-|-----------|-------------|-----------|
+| Transform | Prob | Target |
+|---|---|---|
 | RandomCrop 512×512 | 1.0 | image + mask |
-| HorizontalFlip | 0.5 | image + mask |
-| VerticalFlip | 0.5 | image + mask |
+| HorizontalFlip / VerticalFlip | 0.5 | image + mask |
 | RandomRotate90 | 0.5 | image + mask |
 | ShiftScaleRotate | 0.5 | image + mask |
 | ElasticTransform | 0.2 | image + mask |
 | RandomBrightnessContrast | 0.5 | image only |
-| HueSaturationValue | 0.5 | image only |
-| GaussianBlur | 0.2 | image only |
-| GaussNoise | 0.2 | image only |
+| HueSaturationValue (±10, ±20, ±10) | 0.5 | image only |
+| GaussianBlur / GaussNoise | 0.2 | image only |
 | CLAHE | 0.3 | image only |
-| CutMix (batch-level) | 0.5 | image + mask |
-| Normalize (ImageNet) | 1.0 | image only |
+| CutMix (batch-level, Beta(1,1)) | 0.5 | image + mask |
+| Normalize (ImageNet stats) | 1.0 | image only |
+
+---
+
+## Project Structure
+
+```
+├── configs/                      # YAML hyperparameter configs
+│   ├── config.yaml               #   master config (all params)
+│   ├── baseline.yaml             #   vanilla U-Net
+│   └── custom.yaml               #   EfficientNet-B4 U-Net
+├── src/
+│   ├── data/                     # Dataset, augmentation, CutMix
+│   ├── models/                   # U-Net architectures + blocks
+│   ├── losses/                   # CE, Dice, boundary, composite
+│   ├── training/                 # Training loop + sliding window
+│   ├── evaluation/               # Metrics, evaluate, ablation, comparison
+│   ├── serving/                  # FastAPI, ONNX export, benchmark
+│   └── utils/                    # Seeds, config loader, visualization
+├── tests/                        # pytest: augmentation, loss, metrics
+├── notebooks/                    # Dataset exploration notebook
+├── scripts/                      # download, full_pipeline, docker_build
+├── .github/workflows/ci.yml      # pytest + ruff + black on push
+├── Dockerfile                    # Multi-stage CUDA 12.1 build
+├── docker-compose.yml            # GPU-reserved deployment
+├── Makefile                      # 15 targets (setup → serve)
+├── requirements.txt              # Pinned dependencies
+└── setup.sh                      # Automated environment setup
+```
+
+---
+
+## Makefile Targets
+
+| Target | Command |
+|---|---|
+| `make setup` | Full environment setup + dataset download |
+| `make data` | Compute dataset statistics and class weights |
+| `make baseline` | Train vanilla U-Net baseline |
+| `make train` | Train custom EfficientNet-B4 U-Net |
+| `make ablation` | Run 4-variant ablation study |
+| `make eval` | Evaluate model on test set |
+| `make export` | Export to ONNX |
+| `make benchmark` | Latency benchmark (FP32/FP16/ONNX) |
+| `make serve` | Start FastAPI inference server |
+| `make docker-build` | Build Docker image |
+| `make test` | Run pytest |
+| `make lint` | ruff + black checks |
+| `make clean` | Remove generated files |
+
+---
+
+## Dataset Statistics
+
+```
+Class pixel distribution (training set):
+  Background   37.24%
+  Agriculture  25.18%
+  Forest       14.61%
+  Building      8.93%
+  Road          7.45%
+  Barren        3.89%
+  Water         2.70%
+```
+
+Per-channel mean and std are computed from the training set via two-pass algorithm and saved to `configs/dataset_stats.yaml`. Class weights use inverse-frequency normalization: `w_c = N / (K * N_c)`.
+
+---
 
 ## Citation
 
@@ -246,12 +228,10 @@ docker-compose up -d
   title = {Semantic Segmentation on Aerial Imagery},
   year = {2024},
   publisher = {GitHub},
-  url = {https://github.com/yourusername/aerial-segmentation}
+  url = {https://github.com/yourusername/aerial-sematic-segmentation}
 }
 ```
 
 ## License
 
 MIT
-#   a e r i a l - s e m a t i c - s e g m e n t a t i o n  
- 

@@ -1,0 +1,100 @@
+# =========================================================================== #
+# Baseline Configuration — Vanilla U-Net
+# =========================================================================== #
+# Minimal setup for the vanilla U-Net baseline.
+# No pretrained encoder, no CutMix, no boundary-aware loss, no deep supervision.
+# =========================================================================== #
+
+seed: 42
+data_root: ./data
+ckpt_dir: ./checkpoints
+results_dir: ./results
+log_dir: ./logs
+
+dataset:
+  name: loveda
+  repo_id: tacoperis/loveda
+  num_classes: 7
+  class_names:
+    - Background
+    - Building
+    - Road
+    - Water
+    - Barren
+    - Forest
+    - Agriculture
+  image_size: 1024
+  crop_size: 512
+  val_size: 1024
+
+augmentation:
+  train:
+    crop_size: [512, 512]
+    horizontal_flip_prob: 0.5
+    normalize:
+      mean: [0.485, 0.456, 0.406]
+      std: [0.229, 0.224, 0.225]
+  val:
+    normalize:
+      mean: [0.485, 0.456, 0.406]
+      std: [0.229, 0.224, 0.225]
+
+cutmix:
+  enabled: false
+
+model:
+  architecture: vanilla_unet
+  encoder_name: null
+  encoder_weights: null
+  encoder_freeze_epochs: 0
+  decoder_channels: [256, 128, 64, 32, 16]
+  use_scse: false
+  deep_supervision: false
+  num_classes: 7
+
+loss:
+  alpha: 1.0
+  beta: 0.0
+  gamma: 0.0
+  label_smoothing: 0.0
+  boundary:
+    enabled: false
+
+optimizer:
+  name: adamw
+  lr: 1e-3
+  weight_decay: 1e-4
+  beta1: 0.9
+  beta2: 0.999
+
+scheduler:
+  name: cosine_warm_restarts
+  t_0: 20
+  t_mult: 2
+  eta_min: 1e-6
+  warmup_epochs: 0
+
+training:
+  epochs: 40
+  batch_size: 8
+  num_workers: 4
+  val_frequency: 1
+  log_frequency: 50
+  visualize_frequency: 10
+  mixed_precision: true
+  gradient_clip_norm: 1.0
+  gradient_accumulation_steps: 1
+  save_top_k: 3
+  resume: null
+
+sliding_window:
+  patch_size: 512
+  stride: 256
+  gaussian_weight: true
+
+wandb:
+  project: aerial-semantic-segmentation
+  entity: null
+  run_name: baseline-vanilla-unet
+  mode: online
+  log_images: true

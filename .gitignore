@@ -1,0 +1,41 @@
+# Environment
+.venv/
+venv/
+env/
+.env
+
+# Data
+data/
+checkpoints/
+logs/
+results/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ONNX
+*.onnx
+
+# Wandb
+wandb/

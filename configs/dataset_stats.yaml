@@ -1,0 +1,20 @@
+# Dataset statistics — computed by src/data/dataset_stats.py
+# Placeholder values; will be overwritten during make data
+dataset: loveda
+num_classes: 7
+class_names:
+  - Background
+  - Building
+  - Road
+  - Water
+  - Barren
+  - Forest
+  - Agriculture
+image_size: 1024
+num_train_images: 0
+num_val_images: 0
+num_test_images: 0
+per_channel_mean: null
+per_channel_std: null
+class_pixel_frequencies: null
+class_weights: null
